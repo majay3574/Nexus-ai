@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { ShieldCheck, Mail, Lock, User } from 'lucide-react';
 import { loginUser, registerUser, AuthUser } from '../services/authService';
+import { API_BASE_URL } from '../services/apiConfig';
 
 interface LoginPageProps {
   onAuthSuccess: (token: string, user: AuthUser) => void;
@@ -90,7 +91,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
             </div>
           </div>
           <div className="mt-10 text-xs text-slate-500">
-            Auth server: <span className="text-slate-300">http://localhost:3001</span>
+            Auth server: <span className="text-slate-300">{API_BASE_URL}</span>
           </div>
         </div>
 

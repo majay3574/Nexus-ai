@@ -1,5 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Type, createPartFromBase64, createPartFromText } from "@google/genai";
 import { Message, AIProvider, AppSettings, GroundingMetadata } from "../types";
+import { buildApiUrl } from "./apiConfig";
 
 const getApiKey = (provider: AIProvider, settings: AppSettings): string | undefined => {
   switch (provider) {
@@ -115,7 +116,7 @@ export const fetchLocalModels = async (baseUrl?: string): Promise<string[]> => {
     } catch (err2) {
       // Fallback to local proxy if direct fetch is blocked by CORS
       try {
-        const proxyUrl = `http://localhost:3001/api/ollama/models?baseUrl=${encodeURIComponent(base)}`;
+        const proxyUrl = `${buildApiUrl('/api/ollama/models')}?baseUrl=${encodeURIComponent(base)}`;
         const res = await fetch(proxyUrl);
         if (!res.ok) throw new Error(`Proxy status ${res.status}`);
         const data = await res.json();
@@ -168,7 +169,7 @@ export const pullLocalModel = async (baseUrl: string | undefined, name: string):
     return await tryDirect();
   } catch (err) {
     try {
-      const proxyUrl = `http://localhost:3001/api/ollama/pull?baseUrl=${encodeURIComponent(base)}`;
+      const proxyUrl = `${buildApiUrl('/api/ollama/pull')}?baseUrl=${encodeURIComponent(base)}`;
       const res = await fetch(proxyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,7 +211,7 @@ async function executeBrowserTool(url: string): Promise<string> {
   const normalizedUrl = normalizeUrl(url);
   // Try Playwright backend first
   try {
-    const response = await fetch('http://localhost:3001/api/browse', {
+    const response = await fetch(buildApiUrl('/api/browse'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: normalizedUrl })

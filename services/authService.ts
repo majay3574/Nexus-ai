@@ -1,3 +1,5 @@
+import { buildApiUrl } from './apiConfig';
+
 export interface AuthUser {
   id: number;
   email: string;
@@ -10,8 +12,6 @@ export interface AuthResponse {
   user: AuthUser;
   expiresAt?: string;
 }
-
-const AUTH_BASE_URL = 'http://localhost:3001';
 
 const parseAuthResponse = async (res: Response): Promise<AuthResponse> => {
   const raw = await res.text();
@@ -35,7 +35,7 @@ export const registerUser = async (
   email: string,
   password: string
 ): Promise<AuthResponse> => {
-  const res = await fetch(`${AUTH_BASE_URL}/api/auth/register`, {
+  const res = await fetch(buildApiUrl('/api/auth/register'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, email, password })
@@ -47,7 +47,7 @@ export const loginUser = async (
   email: string,
   password: string
 ): Promise<AuthResponse> => {
-  const res = await fetch(`${AUTH_BASE_URL}/api/auth/login`, {
+  const res = await fetch(buildApiUrl('/api/auth/login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
@@ -56,14 +56,14 @@ export const loginUser = async (
 };
 
 export const fetchMe = async (token: string): Promise<AuthResponse> => {
-  const res = await fetch(`${AUTH_BASE_URL}/api/auth/me`, {
+  const res = await fetch(buildApiUrl('/api/auth/me'), {
     headers: { Authorization: `Bearer ${token}` }
   });
   return parseAuthResponse(res);
 };
 
 export const logoutUser = async (token: string): Promise<void> => {
-  const res = await fetch(`${AUTH_BASE_URL}/api/auth/logout`, {
+  const res = await fetch(buildApiUrl('/api/auth/logout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token })

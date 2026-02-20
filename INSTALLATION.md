@@ -27,7 +27,7 @@ npm run dev:all
 
 # Or run separately:
 npm run dev      # Vite (port 5173)
-npm run server   # Node server (port 3000)
+npm run server   # Node server (port 3001)
 ```
 
 ### 3. Build for Production
@@ -75,7 +75,9 @@ npm run build:desktop
 - Default DB path: `./data/nexus-auth.sqlite`
 - Env overrides:
   - `SQLITE_PATH` - absolute or relative path for the SQLite file
-  - `AUTH_TOKEN_TTL_DAYS` - session expiry in days (default: 30)
+- `AUTH_TOKEN_TTL_DAYS` - session expiry in days (default: 30)
+- Client override for the auth server:
+  - `VITE_API_BASE_URL` - base URL for the Node server (default: `http://localhost:3001`)
 - API endpoints:
   - `POST /api/auth/register`
   - `POST /api/auth/login`
@@ -147,8 +149,8 @@ npm run build:desktop
 # Kill process on port 5173 (Vite)
 npx kill-port 5173
 
-# Kill process on port 3000 (Node)
-npx kill-port 3000
+# Kill process on port 3001 (Node)
+npx kill-port 3001
 ```
 
 ### Database Issues
