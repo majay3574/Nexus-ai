@@ -1,0 +1,68 @@
+{
+  "name": "nexus-agent-studio",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
+    "electron": "electron .",
+    "dev:desktop": "concurrently \"npm run dev\" \"npm run electron\"",
+    "build:desktop": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "react-dom": "^19.2.4",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "@google/genai": "^1.40.0",
+    "react-markdown": "^10.1.0",
+    "localforage": "^1.10.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "playwright": "^1.40.0",
+    "dexie": "^4.0.1",
+    "fuse.js": "^7.0.0",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1",
+    "zustand": "^4.4.7",
+    "use-debounce": "^10.0.0",
+    "clsx": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.nexus.agentstudio",
+    "productName": "Nexus Agent Studio",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "server.js",
+      "package.json"
+    ],
+    "icon": "assets/icon.png",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nexus Agent Studio"
+    }
+  }
+}

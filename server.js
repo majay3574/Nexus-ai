@@ -1,0 +1,192 @@
+import express from 'express';
+import cors from 'cors';
+import { chromium } from 'playwright';
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PORT = Number(process.env.BROWSER_PORT || 3001);
+const OLLAMA_DEFAULT_BASE = 'http://localhost:11434';
+
+let browser = null;
+let browserLaunching = null;
+
+async function ensureBrowser() {
+  if (browser && browser.isConnected()) return browser;
+  if (!browserLaunching) {
+    browserLaunching = chromium.launch({ headless: true })
+      .then((launched) => {
+        browser = launched;
+        browserLaunching = null;
+        browser.on('disconnected', () => {
+          browser = null;
+        });
+        console.log('Playwright browser initialized');
+        return browser;
+      })
+      .catch((err) => {
+        browserLaunching = null;
+        throw err;
+      });
+  }
+  return browserLaunching;
+}
+
+const normalizeUrl = (input) => {
+  if (!input) return null;
+  const trimmed = String(input).trim();
+  if (!trimmed) return null;
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : (trimmed.startsWith('//') ? `https:${trimmed}` : `https://${trimmed}`);
+  try {
+    const parsed = new URL(withProtocol);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    return parsed.toString();
+  } catch (err) {
+    return null;
+  }
+};
+
+const normalizeOllamaBase = (input) => {
+  const raw = (input ? String(input).trim() : '') || process.env.OLLAMA_BASE_URL || OLLAMA_DEFAULT_BASE;
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    if (!['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) return null;
+    const cleanedPath = parsed.pathname.replace(/\/+$/, '').replace(/\/v1$/i, '');
+    parsed.pathname = cleanedPath;
+    return parsed.toString().replace(/\/$/, '');
+  } catch (err) {
+    return null;
+  }
+};
+
+const parseOllamaModelsFromOpenAI = (data) => {
+  if (!data || !Array.isArray(data.data)) return [];
+  return data.data.map((m) => m?.id).filter(Boolean);
+};
+
+const parseOllamaModelsFromTags = (data) => {
+  if (!data || !Array.isArray(data.models)) return [];
+  return data.models.map((m) => m?.name).filter(Boolean);
+};
+
+const parseOllamaPullStatus = (text) => {
+  const lines = String(text).split('\n').map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const obj = JSON.parse(lines[i]);
+      if (obj?.status) return obj.status;
+      if (obj?.error) return obj.error;
+    } catch (err) {
+      continue;
+    }
+  }
+  return String(text).slice(0, 200);
+};
+
+app.post('/api/browse', async (req, res) => {
+  const normalizedUrl = normalizeUrl(req.body?.url);
+  if (!normalizedUrl) {
+    return res.status(400).json({ error: 'Valid http/https URL is required', success: false });
+  }
+
+  let page = null;
+
+  try {
+    const browserInstance = await ensureBrowser();
+    page = await browserInstance.newPage();
+    await page.goto(normalizedUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+    const content = await page.evaluate(() => {
+      document.querySelectorAll('script, style, nav, header, footer').forEach(el => el.remove());
+      return document.body.innerText;
+    });
+
+    const cleanContent = content.replace(/\s+/g, ' ').trim().slice(0, 20000);
+    res.json({ content: cleanContent, success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message, success: false });
+  } finally {
+    if (page) {
+      try { await page.close(); } catch (e) {}
+    }
+  }
+});
+
+app.get('/api/ollama/models', async (req, res) => {
+  const base = normalizeOllamaBase(req.query?.baseUrl);
+  if (!base) {
+    return res.status(400).json({ ok: false, error: 'Invalid Ollama base URL' });
+  }
+  try {
+    const resOpenAI = await fetch(`${base}/v1/models`);
+    if (resOpenAI.ok) {
+      const data = await resOpenAI.json();
+      const models = parseOllamaModelsFromOpenAI(data);
+      if (models.length > 0) {
+        return res.json({ ok: true, source: 'openai', models });
+      }
+    }
+  } catch (err) {}
+
+  try {
+    const resTags = await fetch(`${base}/api/tags`);
+    if (!resTags.ok) {
+      return res.status(resTags.status).json({ ok: false, error: `Ollama status ${resTags.status}` });
+    }
+    const data = await resTags.json();
+    const models = parseOllamaModelsFromTags(data);
+    return res.json({ ok: true, source: 'ollama', models });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to reach Ollama';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.post('/api/ollama/pull', async (req, res) => {
+  const base = normalizeOllamaBase(req.query?.baseUrl);
+  if (!base) {
+    return res.status(400).json({ ok: false, error: 'Invalid Ollama base URL' });
+  }
+  const name = req.body?.name;
+  if (!name) {
+    return res.status(400).json({ ok: false, error: 'Model name is required' });
+  }
+  try {
+    const response = await fetch(`${base}/api/pull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      return res.status(response.status).json({ ok: false, error: text || `Status ${response.status}` });
+    }
+    return res.json({ ok: true, status: parseOllamaPullStatus(text) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to reach Ollama';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.get('/health', (_req, res) => {
+  const ready = !!(browser && browser.isConnected());
+  res.json({ ok: true, browserReady: ready });
+});
+
+app.listen(PORT, () => {
+  ensureBrowser().catch((err) => {
+    console.error('Failed to initialize Playwright browser:', err);
+  });
+  console.log(`Browser API running on http://localhost:${PORT}`);
+});
+
+process.on('SIGINT', async () => {
+  if (browser) await browser.close();
+  process.exit();
+});
