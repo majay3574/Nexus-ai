@@ -10,7 +10,32 @@ declare global {
 }
 
 let db: any = null;
-const DB_NAME = 'nexus_agents_db';
+const LEGACY_DB_NAME = 'nexus_agents_db';
+let dbName = LEGACY_DB_NAME;
+let activeUserKey = 'default';
+
+const sanitizeUserKey = (value: string) => {
+  const trimmed = (value || '').toLowerCase().trim();
+  const safe = trimmed.replace(/[^a-z0-9_-]/g, '');
+  return safe.slice(0, 64);
+};
+
+export const setActiveUser = (userKey: string) => {
+  const safeKey = sanitizeUserKey(userKey) || 'default';
+  activeUserKey = safeKey;
+  dbName = `${LEGACY_DB_NAME}_${activeUserKey}`;
+  if (db && typeof db.close === 'function') {
+    try { db.close(); } catch (e) {}
+  }
+  db = null;
+};
+
+export const resetDB = () => {
+  if (db && typeof db.close === 'function') {
+    try { db.close(); } catch (e) {}
+  }
+  db = null;
+};
 
 // Initialize SQL.js and load/create DB
 export const initDB = async (): Promise<void> => {
@@ -22,7 +47,14 @@ export const initDB = async (): Promise<void> => {
       locateFile: (file: string) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
     });
 
-    const savedDbBuffer = await localforage.getItem<ArrayBuffer>(DB_NAME);
+    let savedDbBuffer = await localforage.getItem<ArrayBuffer>(dbName);
+
+    if (!savedDbBuffer && dbName !== LEGACY_DB_NAME) {
+      const legacyBuffer = await localforage.getItem<ArrayBuffer>(LEGACY_DB_NAME);
+      if (legacyBuffer) {
+        savedDbBuffer = legacyBuffer;
+      }
+    }
 
     if (savedDbBuffer) {
       db = new SQL.Database(new Uint8Array(savedDbBuffer));
@@ -179,7 +211,7 @@ const seedDefaults = () => {
 const saveDB = async () => {
   if (!db) return;
   const data = db.export();
-  await localforage.setItem(DB_NAME, data);
+  await localforage.setItem(dbName, data);
 };
 
 // --- Data Access Layers ---

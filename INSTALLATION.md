@@ -70,6 +70,20 @@ npm run build:desktop
   - Summaries
   - Saved metadata
 
+### Authentication (SQLite)
+- Uses a local SQLite database managed by the Node server
+- Default DB path: `./data/nexus-auth.sqlite`
+- Env overrides:
+  - `SQLITE_PATH` - absolute or relative path for the SQLite file
+  - `AUTH_TOKEN_TTL_DAYS` - session expiry in days (default: 30)
+- API endpoints:
+  - `POST /api/auth/register`
+  - `POST /api/auth/login`
+  - `GET /api/auth/me`
+  - `POST /api/auth/logout`
+- Client data is isolated per user with a dedicated local SQL.js database key:
+  - `nexus_agents_db_<userId>`
+
 ---
 
 ## Configuration
@@ -84,6 +98,7 @@ npm run build:desktop
 
 ### Local Storage
 - `darkMode` - Theme preference
+- `authToken` - Login session token
 - `reaction-{messageId}` - Message reactions
 
 ### IndexedDB Storage

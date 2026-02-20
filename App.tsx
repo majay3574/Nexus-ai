@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { Send, Square, Menu, Sparkles, Search, Globe, Trash2, Download, ImageUp, ImageDown, Mic, MicOff, BookOpen, Edit2, RotateCcw, Pin, BarChart3 } from 'lucide-react';
+import { Send, Square, Menu, Sparkles, Search, Globe, Trash2, Download, ImageUp, ImageDown, Mic, MicOff, BookOpen, Edit2, RotateCcw, Pin, BarChart3, LogOut } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import AgentConfigModal from './components/AgentConfigModal';
@@ -8,9 +8,11 @@ import SettingsModal from './components/SettingsModal';
 import AgentConversationModal from './components/AgentConversationModal';
 import PromptLibrary from './components/PromptLibrary';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import LoginPage from './components/LoginPage';
 import { AgentConfig, Message, ChatState, AppSettings, AutomationDefinition } from './types';
 import { DEFAULT_AGENTS } from './constants';
 import { streamAIResponse, imageToText, textToImage } from './services/aiService';
+import { fetchMe, logoutUser, AuthUser } from './services/authService';
 import * as db from './lib/db';
 import { estimateTokens, formatRelativeTime, searchMessages } from './lib/utils';
 
@@ -21,6 +23,9 @@ function App() {
   const [currentAgentId, setCurrentAgentId] = useState<string>('');
   const [messages, setMessages] = useState<ChatState>({});
   const [settings, setSettings] = useState<AppSettings>({});
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -51,8 +56,39 @@ function App() {
   const streamingContentRef = useRef('');
   const streamingAgentRef = useRef<string | null>(null);
 
+  // Initialize Auth
+  useEffect(() => {
+    let isMounted = true;
+    const initAuth = async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        if (isMounted) setIsAuthReady(true);
+        return;
+      }
+
+      try {
+        const session = await fetchMe(token);
+        if (isMounted) {
+          db.setActiveUser(String(session.user?.id ?? session.user?.email ?? session.user?.name ?? 'default'));
+          setIsAuthenticated(true);
+          setAuthUser(session.user);
+        }
+      } catch (e) {
+        localStorage.removeItem('authToken');
+      } finally {
+        if (isMounted) setIsAuthReady(true);
+      }
+    };
+
+    initAuth();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Initialize DB
   useEffect(() => {
+    if (!isAuthenticated) return;
     const init = async () => {
       try {
         // Add timeout to prevent infinite loading
@@ -89,7 +125,7 @@ function App() {
       }
     };
     init();
-  }, []);
+  }, [isAuthenticated]);
 
   // Load messages when changing agent
   useEffect(() => {
@@ -792,6 +828,52 @@ function App() {
     });
   };
 
+  const handleAuthSuccess = (token: string, user: AuthUser) => {
+    localStorage.setItem('authToken', token);
+    db.setActiveUser(String(user?.id ?? user?.email ?? user?.name ?? 'default'));
+    setIsAuthenticated(true);
+    setAuthUser(user);
+  };
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      try {
+        await logoutUser(token);
+      } catch (e) {}
+    }
+    localStorage.removeItem('authToken');
+    setIsAuthenticated(false);
+    setAuthUser(null);
+    setIsDbReady(false);
+    setAgents([]);
+    setMessages({});
+    setCurrentAgentId('');
+    setSettings({});
+    db.resetDB();
+  };
+
+  if (!isAuthReady) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#0b1116] to-[#132b3a]">
+        <div className="flex flex-col items-center gap-6 p-6">
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-400 rounded-full animate-spin"></div>
+            <div className="absolute inset-2 w-8 h-8 border-2 border-cyan-400/20 rounded-full animate-pulse"></div>
+          </div>
+          <div className="text-center space-y-2">
+            <p className="text-lg font-semibold text-emerald-100">Checking Session</p>
+            <p className="text-sm text-cyan-300">Verifying login status...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage onAuthSuccess={handleAuthSuccess} />;
+  }
+
   if (!isDbReady) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#0b1116] to-[#132b3a]">
@@ -916,6 +998,19 @@ function App() {
               className="text-xs font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-full border border-slate-700 hover:border-slate-500 transition-all"
             >
               System Prompt & Tools
+            </button>
+            {authUser && (
+              <span className="text-[11px] text-slate-500 hidden lg:block">
+                {authUser.name || authUser.email}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="text-xs font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-full border border-slate-700 hover:border-slate-500 transition-all flex items-center gap-1.5"
+              title="Sign out"
+            >
+              <LogOut size={12} />
+              Logout
             </button>
           </div>
         </header>

@@ -1,16 +1,35 @@
 import express from 'express';
 import cors from 'cors';
 import { chromium } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import { open } from 'sqlite';
+import sqlite3 from 'sqlite3';
+import bcrypt from 'bcryptjs';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = Number(process.env.BROWSER_PORT || 3001);
+const PORT = Number(process.env.PORT || process.env.BROWSER_PORT || 3001);
 const OLLAMA_DEFAULT_BASE = 'http://localhost:11434';
+const RAW_AUTH_TOKEN_TTL_DAYS = Number(process.env.AUTH_TOKEN_TTL_DAYS || 30);
+const AUTH_TOKEN_TTL_DAYS = Number.isFinite(RAW_AUTH_TOKEN_TTL_DAYS) && RAW_AUTH_TOKEN_TTL_DAYS > 0
+  ? RAW_AUTH_TOKEN_TTL_DAYS
+  : 30;
+const AUTH_TOKEN_TTL_MS = AUTH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+const SQLITE_PATH = process.env.SQLITE_PATH || path.join(process.cwd(), 'data', 'nexus-auth.sqlite');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DIST_DIR = path.join(__dirname, 'dist');
+const SHOULD_SERVE_CLIENT = process.env.SERVE_CLIENT !== 'false';
 
 let browser = null;
 let browserLaunching = null;
+let authDb = null;
 
 async function ensureBrowser() {
   if (browser && browser.isConnected()) return browser;
@@ -88,6 +107,87 @@ const parseOllamaPullStatus = (text) => {
   return String(text).slice(0, 200);
 };
 
+const ensureAuthDb = async () => {
+  if (authDb) return authDb;
+  const dir = path.dirname(SQLITE_PATH);
+  if (dir && dir !== '.') {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  authDb = await open({
+    filename: SQLITE_PATH,
+    driver: sqlite3.Database
+  });
+
+  await authDb.exec('PRAGMA foreign_keys = ON;');
+  await authDb.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await authDb.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  await authDb.run(`DELETE FROM sessions WHERE datetime(expires_at) <= datetime('now')`);
+  console.log(`SQLite auth DB ready at ${SQLITE_PATH}`);
+  return authDb;
+};
+
+const hashPassword = async (password) => bcrypt.hash(password, 10);
+const verifyPassword = async (password, hash) => bcrypt.compare(password, hash);
+
+const getAuthToken = (req) => {
+  const header = String(req.headers?.authorization || '');
+  if (header.toLowerCase().startsWith('bearer ')) {
+    return header.slice(7).trim();
+  }
+  return req.body?.token || req.query?.token || null;
+};
+
+const createSession = async (userId) => {
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + AUTH_TOKEN_TTL_MS).toISOString();
+  await authDb.run(
+    'INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)',
+    [userId, token, expiresAt]
+  );
+  return { token, expiresAt };
+};
+
+const fetchSessionUser = async (token) => {
+  if (!token) return null;
+  const row = await authDb.get(
+    `SELECT sessions.token, sessions.expires_at, users.id as userId, users.email, users.name
+     FROM sessions
+     JOIN users ON users.id = sessions.user_id
+     WHERE sessions.token = ?`,
+    token
+  );
+  if (!row) return null;
+  const expiry = Date.parse(row.expires_at);
+  if (Number.isFinite(expiry) && expiry <= Date.now()) {
+    await authDb.run('DELETE FROM sessions WHERE token = ?', token);
+    return null;
+  }
+  return {
+    token: row.token,
+    expiresAt: row.expires_at,
+    user: { id: row.userId, email: row.email, name: row.name }
+  };
+};
+
 app.post('/api/browse', async (req, res) => {
   const normalizedUrl = normalizeUrl(req.body?.url);
   if (!normalizedUrl) {
@@ -115,6 +215,115 @@ app.post('/api/browse', async (req, res) => {
     if (page) {
       try { await page.close(); } catch (e) {}
     }
+  }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    await ensureAuthDb();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const name = String(req.body?.name || '').trim() || null;
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ ok: false, error: 'A valid email is required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ ok: false, error: 'Password must be at least 6 characters.' });
+    }
+
+    const existing = await authDb.get('SELECT id FROM users WHERE email = ?', email);
+    if (existing) {
+      return res.status(409).json({ ok: false, error: 'Email already exists. Please sign in.' });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const result = await authDb.run(
+      'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
+      [email, passwordHash, name]
+    );
+    const userId = result.lastID;
+    const session = await createSession(userId);
+    return res.json({
+      ok: true,
+      token: session.token,
+      expiresAt: session.expiresAt,
+      user: { id: userId, email, name }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Registration failed';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    await ensureAuthDb();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ ok: false, error: 'Email and password are required.' });
+    }
+
+    const user = await authDb.get(
+      'SELECT id, email, name, password_hash FROM users WHERE email = ?',
+      email
+    );
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'Invalid email or password.' });
+    }
+
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ ok: false, error: 'Invalid email or password.' });
+    }
+
+    const session = await createSession(user.id);
+    return res.json({
+      ok: true,
+      token: session.token,
+      expiresAt: session.expiresAt,
+      user: { id: user.id, email: user.email, name: user.name }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Login failed';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    await ensureAuthDb();
+    const token = getAuthToken(req);
+    if (!token) {
+      return res.status(401).json({ ok: false, error: 'Missing token.' });
+    }
+
+    const session = await fetchSessionUser(token);
+    if (!session) {
+      return res.status(401).json({ ok: false, error: 'Session expired. Please sign in again.' });
+    }
+
+    return res.json({ ok: true, user: session.user, expiresAt: session.expiresAt });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to validate session';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    await ensureAuthDb();
+    const token = getAuthToken(req);
+    if (!token) {
+      return res.status(400).json({ ok: false, error: 'Missing token.' });
+    }
+    await authDb.run('DELETE FROM sessions WHERE token = ?', token);
+    return res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Logout failed';
+    return res.status(500).json({ ok: false, error: message });
   }
 });
 
@@ -174,6 +383,20 @@ app.post('/api/ollama/pull', async (req, res) => {
   }
 });
 
+if (SHOULD_SERVE_CLIENT && fs.existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR));
+}
+
+if (SHOULD_SERVE_CLIENT && fs.existsSync(DIST_DIR)) {
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+} else {
+  app.get('/', (_req, res) => {
+    res.json({ ok: true, service: 'nexus-agent-studio', message: 'API server running.' });
+  });
+}
+
 app.get('/health', (_req, res) => {
   const ready = !!(browser && browser.isConnected());
   res.json({ ok: true, browserReady: ready });
@@ -183,10 +406,14 @@ app.listen(PORT, () => {
   ensureBrowser().catch((err) => {
     console.error('Failed to initialize Playwright browser:', err);
   });
+  ensureAuthDb().catch((err) => {
+    console.error('Failed to initialize SQLite auth DB:', err);
+  });
   console.log(`Browser API running on http://localhost:${PORT}`);
 });
 
 process.on('SIGINT', async () => {
   if (browser) await browser.close();
+  if (authDb) await authDb.close();
   process.exit();
 });
