@@ -59,7 +59,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center px-6 py-10">
+    <div className="min-h-screen w-full flex items-center justify-center px-6 py-10 relative">
       <div className="w-full max-w-5xl grid gap-8 md:grid-cols-[1.1fr_0.9fr] items-stretch">
         <div className="neo-panel p-10 rounded-3xl animate-float flex flex-col justify-between">
           <div>
@@ -91,7 +91,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
             </div>
           </div>
           <div className="mt-10 text-xs text-slate-500">
-            Auth server: <span className="text-slate-300">{API_BASE_URL}</span>
           </div>
         </div>
 
@@ -187,6 +186,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
             </button>
           </div>
         </div>
+      </div>
+      <div className="absolute right-6 bottom-4 text-xs text-slate-400">
+        Founder:{' '}
+        <a
+          href="https://www.linkedin.com/in/ajay-michael"
+          target="_blank"
+          rel="noreferrer"
+          className="text-emerald-300 hover:text-emerald-200"
+        >
+          Ajay Michael
+        </a>
       </div>
     </div>
   );
