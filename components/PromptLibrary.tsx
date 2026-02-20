@@ -53,7 +53,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="neo-panel rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-6 border-b border-slate-800/70">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-800/70">
           <div>
             <h2 className="text-xl font-bold text-white">Prompt Library</h2>
             <p className="text-xs text-slate-400">Curated commands and automations</p>
@@ -63,7 +63,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4 overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('prompts')}

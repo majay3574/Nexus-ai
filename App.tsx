@@ -929,9 +929,9 @@ function App() {
       <div className="flex-1 flex flex-col h-full relative">
         
         {/* Chat Header */}
-        <header className="neo-header h-16 flex items-center justify-between px-6 backdrop-blur-md relative overflow-hidden">
+        <header className="neo-header flex flex-col md:flex-row md:h-16 items-start md:items-center justify-between px-4 sm:px-6 py-3 md:py-0 backdrop-blur-md relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-amber-500/10 animate-pulse"></div>
-          <div className="flex items-center gap-3 pl-10 md:pl-0 relative z-10">
+          <div className="flex items-center gap-3 pl-10 md:pl-0 relative z-10 w-full md:w-auto">
              <div className="w-2.5 h-2.5 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse" style={{ backgroundColor: `var(--color-${currentAgent?.color || 'blue'}-500, #3b82f6)` }}></div>
              <div>
                <div className="flex items-center gap-2">
@@ -952,7 +952,7 @@ function App() {
                </p>
              </div>
           </div>
-          <div className="flex items-center gap-2 relative z-10">
+          <div className="flex flex-wrap items-center gap-2 relative z-10 w-full md:w-auto md:flex-nowrap md:justify-end mt-3 md:mt-0">
             <button 
               onClick={() => setShowSearch(!showSearch)}
               className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-all flex items-center gap-1.5 ${
@@ -983,7 +983,7 @@ function App() {
               title="Download chat history"
             >
               <Download size={12} />
-              Download
+              <span className="hidden sm:inline">Download</span>
             </button>
             <button 
               onClick={handleClearHistory}
@@ -991,13 +991,14 @@ function App() {
               title="Clear chat history"
             >
               <Trash2 size={12} />
-              Clear
+              <span className="hidden sm:inline">Clear</span>
             </button>
             <button 
               onClick={() => handleEditAgent(currentAgent)}
-              className="text-xs font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-full border border-slate-700 hover:border-slate-500 transition-all"
+              className="text-xs font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-full border border-slate-700 hover:border-slate-500 transition-all flex items-center gap-1.5"
             >
-              System Prompt & Tools
+              <Edit2 size={12} />
+              <span className="hidden sm:inline">System Prompt &amp; Tools</span>
             </button>
             {authUser && (
               <span className="text-[11px] text-slate-500 hidden lg:block">
@@ -1010,7 +1011,7 @@ function App() {
               title="Sign out"
             >
               <LogOut size={12} />
-              Logout
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </header>
@@ -1136,7 +1137,7 @@ function App() {
                   >
                     {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
                   </button>
-                  <div className="ml-auto text-[10px] text-slate-500 flex items-center gap-2">
+                  <div className="ml-auto text-[10px] text-slate-500 hidden sm:flex items-center gap-2">
                     {isRecording ? (
                       <span className="flex items-center gap-1 text-red-400 animate-pulse">
                         <span className="w-2 h-2 bg-red-400 rounded-full"></span>

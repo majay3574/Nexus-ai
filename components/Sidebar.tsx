@@ -30,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     cyan: 'bg-cyan-900/30 text-cyan-400 ring-cyan-500/20',
   };
   return (
-    <div className="w-80 h-full flex flex-col glass-panel border-r border-slate-700/40">
+    <div className="w-72 sm:w-80 h-full flex flex-col glass-panel border-r border-slate-700/40">
       <div className="p-6 border-b border-slate-700/40 flex items-center justify-between">
         <div className="flex items-center gap-2 text-emerald-300">
           <div className="w-9 h-9 rounded-full flex items-center justify-center badge-orbit animate-float">

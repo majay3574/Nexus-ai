@@ -175,7 +175,7 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
       <div className="neo-panel rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-800">
           <div>
             <h2 className="text-xl font-bold text-white">
               {initialAgent ? 'Edit Agent' : 'Create New Agent'}
@@ -188,7 +188,7 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-6 custom-scrollbar">
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
@@ -231,7 +231,7 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
             {/* Provider Selection */}
             <div className="space-y-2">
                <label className="text-xs font-semibold text-slate-300 uppercase">AI Provider</label>
-               <div className="grid grid-cols-2 gap-2">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                  {PROVIDERS.map((p) => (
                    <button
                     key={p.id}
@@ -453,7 +453,7 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
 
           </div>
           
-          <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-800">
+          <div className="pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-800">
              {initialAgent && onDelete ? (
                <button
                  type="button"
@@ -466,7 +466,7 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
              ) : (
                <div />
              )}
-             <div className="flex items-center gap-3">
+             <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
                <button
                  type="button"
                  onClick={onClose}

@@ -72,14 +72,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ isOpen, onClose
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="neo-panel rounded-2xl w-full max-w-6xl shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-6 border-b border-slate-800/70">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-800/70">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
               <BarChart3 size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">Analytics Dashboard</h2>
-              <p className="text-sm text-slate-400">Track your AI usage and performance</p>
+              <h2 className="text-lg sm:text-xl font-bold text-white">Analytics Dashboard</h2>
+              <p className="text-xs sm:text-sm text-slate-400">Track your AI usage and performance</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-800/60 rounded-full transition">
@@ -87,7 +87,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ isOpen, onClose
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6">
           {/* Overview Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="p-4 bg-gradient-to-br from-blue-900/30 to-blue-900/10 border border-blue-500/30 rounded-xl">

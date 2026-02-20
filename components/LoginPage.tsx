@@ -59,50 +59,30 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center px-6 py-10 relative">
-      <div className="w-full max-w-5xl grid gap-8 md:grid-cols-[1.1fr_0.9fr] items-stretch">
-        <div className="neo-panel p-10 rounded-3xl animate-float flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shadow-[0_0_24px_rgba(45,212,191,0.25)]">
-                <ShieldCheck className="text-emerald-300" size={28} />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">Nexus Agent Studio</p>
-                <h1 className="text-3xl font-semibold text-white">Secure Access</h1>
-              </div>
+    <div className="min-h-screen w-full flex flex-col items-center justify-center gap-6 px-4 sm:px-6 py-10 relative">
+      <div className="w-full max-w-md sm:max-w-lg">
+        <div className="glass-panel p-5 sm:p-8 rounded-2xl sm:rounded-3xl flex flex-col justify-center sm:animate-float">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shadow-[0_0_24px_rgba(45,212,191,0.25)]">
+              <ShieldCheck className="text-emerald-300" size={26} />
             </div>
-            <p className="mt-6 text-base text-slate-300 leading-relaxed">
-              {subtitle}
-            </p>
-            <div className="mt-8 grid gap-4">
-              <div className="glass-panel rounded-2xl p-4">
-                <p className="text-sm text-slate-200 font-medium">Local-first credentials</p>
-                <p className="text-xs text-slate-400 mt-1">Passwords are hashed and stored in a local SQLite database.</p>
-              </div>
-              <div className="glass-panel rounded-2xl p-4">
-                <p className="text-sm text-slate-200 font-medium">Session-based access</p>
-                <p className="text-xs text-slate-400 mt-1">Sessions are issued by the Node server with configurable expiry.</p>
-              </div>
-              <div className="glass-panel rounded-2xl p-4">
-                <p className="text-sm text-slate-200 font-medium">Private workspace</p>
-                <p className="text-xs text-slate-400 mt-1">Your chat data remains on-device in IndexedDB.</p>
-              </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">Nexus Agent Studio</p>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-white">Secure Access</h1>
             </div>
           </div>
-          <div className="mt-10 text-xs text-slate-500">
-          </div>
-        </div>
+          <p className="mt-4 text-sm sm:text-base text-slate-300 leading-relaxed">
+            {subtitle}
+          </p>
 
-        <div className="glass-panel p-8 rounded-3xl flex flex-col justify-center">
-          <div>
-            <h2 className="text-2xl font-semibold text-white">{isRegister ? 'Create account' : 'Sign in'}</h2>
+          <div className="mt-6">
+            <h2 className="text-xl sm:text-2xl font-semibold text-white">{isRegister ? 'Create account' : 'Sign in'}</h2>
             <p className="text-sm text-slate-400 mt-2">
               {isRegister ? 'Set up your local login in seconds.' : 'Welcome back. Enter your credentials.'}
             </p>
           </div>
 
-          <form ref={formRef} className="mt-6 space-y-4" onSubmit={handleSubmit} autoComplete="on">
+          <form ref={formRef} className="mt-6 space-y-3 sm:space-y-4" onSubmit={handleSubmit} autoComplete="on">
             {isRegister && (
               <label className="block text-sm text-slate-300">
                 Name
@@ -156,7 +136,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
             </label>
 
             {error && (
-              <div className="text-sm text-red-300 bg-red-900/20 border border-red-500/40 px-3 py-2 rounded-lg">
+              <div className="text-xs sm:text-sm text-red-300 bg-red-900/20 border border-red-500/40 px-3 py-2 rounded-lg">
                 {error}
               </div>
             )}
@@ -187,7 +167,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
           </div>
         </div>
       </div>
-      <div className="absolute right-6 bottom-4 text-xs text-slate-400">
+      <div className="mt-6 w-full text-center text-xs text-slate-400 md:mt-0 md:w-auto md:text-right md:absolute md:right-6 md:bottom-4">
         Founder:{' '}
         <a
           href="https://www.linkedin.com/in/ajay-michael"
