@@ -12,6 +12,7 @@ import LoginPage from './components/LoginPage';
 import { AgentConfig, Message, ChatState, AppSettings, AutomationDefinition } from './types';
 import { DEFAULT_AGENTS } from './constants';
 import { streamAIResponse, imageToText, textToImage } from './services/aiService';
+import { logEvent } from './services/logService';
 import { fetchMe, logoutUser, AuthUser } from './services/authService';
 import * as db from './lib/db';
 import { estimateTokens, formatRelativeTime, searchMessages } from './lib/utils';
@@ -408,6 +409,18 @@ function App() {
     const updatedMessages = [...activeMessages, userMsg];
     setMessages(prev => ({ ...prev, [activeAgentId]: updatedMessages }));
     db.saveMessage(activeAgentId, userMsg);
+    void logEvent('user_image_to_text', {
+      agentId: activeAgentId,
+      agentName: activeAgent.name,
+      provider: activeAgent.provider || 'google',
+      model: activeAgent.model,
+      messageId: userMsg.id,
+      content: userMsg.content,
+      contentLength: userMsg.content.length,
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size
+    });
 
     const aiMsgId = crypto.randomUUID();
     const initialAiMsg: Message = {
@@ -443,6 +456,17 @@ function App() {
         return { ...prev, [activeAgentId]: newAgentMsgs };
       });
       db.saveMessage(activeAgentId, finalMsg);
+      void logEvent('assistant_message', {
+        agentId: activeAgentId,
+        agentName: activeAgent.name,
+        provider: activeAgent.provider || 'google',
+        model: activeAgent.model,
+        messageId: finalMsg.id,
+        content: finalMsg.content,
+        contentLength: finalMsg.content.length,
+        interaction: 'image_to_text',
+        isError: false
+      });
     } catch (error: any) {
       const errorMsg: Message = {
         ...initialAiMsg,
@@ -455,6 +479,15 @@ function App() {
         return { ...prev, [activeAgentId]: newAgentMsgs };
       });
       db.saveMessage(activeAgentId, errorMsg);
+      void logEvent('assistant_error', {
+        agentId: activeAgentId,
+        agentName: activeAgent.name,
+        provider: activeAgent.provider || 'google',
+        model: activeAgent.model,
+        messageId: errorMsg.id,
+        error: errorMsg.content,
+        interaction: 'image_to_text'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -481,6 +514,15 @@ function App() {
     const updatedMessages = [...activeMessages, userMsg];
     setMessages(prev => ({ ...prev, [activeAgentId]: updatedMessages }));
     db.saveMessage(activeAgentId, userMsg);
+    void logEvent('user_text_to_image', {
+      agentId: activeAgentId,
+      agentName: activeAgent.name,
+      provider: activeAgent.provider || 'google',
+      model: activeAgent.model,
+      messageId: userMsg.id,
+      content: userMsg.content,
+      contentLength: userMsg.content.length
+    });
 
     const aiMsgId = crypto.randomUUID();
     const initialAiMsg: Message = {
@@ -512,6 +554,17 @@ function App() {
         return { ...prev, [activeAgentId]: newAgentMsgs };
       });
       db.saveMessage(activeAgentId, finalMsg);
+      void logEvent('assistant_message', {
+        agentId: activeAgentId,
+        agentName: activeAgent.name,
+        provider: activeAgent.provider || 'google',
+        model: activeAgent.model,
+        messageId: finalMsg.id,
+        content: finalMsg.content,
+        contentLength: finalMsg.content.length,
+        interaction: 'text_to_image',
+        isError: false
+      });
     } catch (error: any) {
       const errorMsg: Message = {
         ...initialAiMsg,
@@ -524,6 +577,15 @@ function App() {
         return { ...prev, [activeAgentId]: newAgentMsgs };
       });
       db.saveMessage(activeAgentId, errorMsg);
+      void logEvent('assistant_error', {
+        agentId: activeAgentId,
+        agentName: activeAgent.name,
+        provider: activeAgent.provider || 'google',
+        model: activeAgent.model,
+        messageId: errorMsg.id,
+        error: errorMsg.content,
+        interaction: 'text_to_image'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -552,6 +614,15 @@ function App() {
     const updatedMessages = [...activeMessages, userMsg];
     setMessages(prev => ({ ...prev, [activeAgentId]: updatedMessages }));
     db.saveMessage(activeAgentId, userMsg);
+    void logEvent('user_message', {
+      agentId: activeAgentId,
+      agentName: activeAgent.name,
+      provider: activeAgent.provider || 'google',
+      model: activeAgent.model,
+      messageId: userMsg.id,
+      content: userMsg.content,
+      contentLength: userMsg.content.length
+    });
     
     setIsLoading(true);
     const controller = new AbortController();
@@ -666,6 +737,17 @@ function App() {
       });
 
       db.saveMessage(activeAgentId, finalMsg);
+      void logEvent('assistant_message', {
+        agentId: activeAgentId,
+        agentName: activeAgent.name,
+        provider: activeAgent.provider || 'google',
+        model: activeAgent.model,
+        messageId: finalMsg.id,
+        content: finalMsg.content,
+        contentLength: finalMsg.content.length,
+        durationMs: Date.now() - loaderStartTime,
+        isError: false
+      });
 
     } catch (error: any) {
       if (error?.name === 'AbortError' || stopRequestedRef.current) {
@@ -748,6 +830,15 @@ function App() {
         [activeAgentId]: [...(prev[activeAgentId] || []), errorMsg]
       }));
       db.saveMessage(activeAgentId, errorMsg);
+      void logEvent('assistant_error', {
+        agentId: activeAgentId,
+        agentName: activeAgent.name,
+        provider: activeAgent.provider || 'google',
+        model: activeAgent.model,
+        messageId: errorMsg.id,
+        error: errorMsg.content,
+        durationMs: Date.now() - loaderStartTime
+      });
     } finally {
       abortControllerRef.current = null;
       stopRequestedRef.current = false;
@@ -756,6 +847,13 @@ function App() {
 
   const handleStop = () => {
     if (!isLoading) return;
+    void logEvent('user_stop', {
+      agentId: currentAgentId,
+      agentName: currentAgent?.name || null,
+      provider: currentAgent?.provider || 'google',
+      model: currentAgent?.model || null,
+      partialLength: streamingContentRef.current.length
+    });
     stopRequestedRef.current = true;
     abortControllerRef.current?.abort();
     setIsLoading(false);
@@ -1171,7 +1269,7 @@ function App() {
                     <Square size={16} />
                   </button>
                   <button
-                    onClick={handleSendMessage}
+                    onClick={() => handleSendMessage()}
                     disabled={!inputValue.trim() || isLoading}
                     className={`mb-1 p-2.5 rounded-lg transition-all duration-200 flex-shrink-0
                       ${inputValue.trim() && !isLoading 

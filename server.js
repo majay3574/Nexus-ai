@@ -21,6 +21,8 @@ const AUTH_TOKEN_TTL_DAYS = Number.isFinite(RAW_AUTH_TOKEN_TTL_DAYS) && RAW_AUTH
   : 30;
 const AUTH_TOKEN_TTL_MS = AUTH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
 const SQLITE_PATH = process.env.SQLITE_PATH || path.join(process.cwd(), 'data', 'nexus-auth.sqlite');
+const LOG_PATH = process.env.APP_LOG_PATH || path.join(process.cwd(), 'data', 'app.log');
+const LOG_MAX_STRING = Number(process.env.APP_LOG_MAX_STRING || 8000);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,6 +109,89 @@ const parseOllamaPullStatus = (text) => {
   return String(text).slice(0, 200);
 };
 
+const REDACTED = '[REDACTED]';
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'pass',
+  'pwd',
+  'secret',
+  'token',
+  'authorization',
+  'apiKey',
+  'apikey',
+  'api_key',
+  'key',
+  'credentials'
+]);
+
+const REDACT_PATTERNS = [
+  /bearer\s+[a-z0-9._-]+/gi,
+  /\bsk-[a-z0-9_-]{8,}\b/gi,
+  /\bgsk_[a-z0-9_-]{8,}\b/gi,
+  /\bsk-ant-[a-z0-9_-]{8,}\b/gi,
+  /\bAIza[0-9a-z_-]{8,}\b/gi,
+  /\bxai-[a-z0-9_-]{8,}\b/gi
+];
+
+const ensureLogDir = () => {
+  const dir = path.dirname(LOG_PATH);
+  if (dir && dir !== '.') {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+};
+
+const hashIdentifier = (value) => {
+  if (!value) return null;
+  return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
+};
+
+const redactString = (value) => {
+  let output = String(value);
+  for (const pattern of REDACT_PATTERNS) {
+    output = output.replace(pattern, REDACTED);
+  }
+  if (LOG_MAX_STRING > 0 && output.length > LOG_MAX_STRING) {
+    const extra = output.length - LOG_MAX_STRING;
+    return `${output.slice(0, LOG_MAX_STRING)}...[truncated ${extra} chars]`;
+  }
+  return output;
+};
+
+const sanitizeForLog = (value, depth = 0) => {
+  if (depth > 8) return '[TRUNCATED]';
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForLog(item, depth + 1));
+  }
+  if (typeof value === 'string') {
+    return redactString(value);
+  }
+  if (typeof value === 'object') {
+    const output = {};
+    for (const [key, val] of Object.entries(value)) {
+      const lowerKey = String(key).toLowerCase();
+      if (SENSITIVE_KEYS.has(lowerKey) || lowerKey.includes('password') || lowerKey.includes('token')) {
+        output[key] = REDACTED;
+        continue;
+      }
+      output[key] = sanitizeForLog(val, depth + 1);
+    }
+    return output;
+  }
+  return value;
+};
+
+const appendLog = async (entry) => {
+  try {
+    ensureLogDir();
+    const line = `${JSON.stringify(entry)}\n`;
+    console.log(line.trim());
+    await fs.promises.appendFile(LOG_PATH, line, 'utf8');
+  } catch (err) {
+    console.warn('Failed to write log entry', err);
+  }
+};
+
 const ensureAuthDb = async () => {
   if (authDb) return authDb;
   const dir = path.dirname(SQLITE_PATH);
@@ -188,6 +273,50 @@ const fetchSessionUser = async (token) => {
   };
 };
 
+app.post('/api/log', async (req, res) => {
+  try {
+    const event = String(req.body?.event || '').trim();
+    if (!event) {
+      return res.status(400).json({ ok: false, error: 'Event is required.' });
+    }
+
+    const levelRaw = String(req.body?.level || 'info').toLowerCase();
+    const level = ['info', 'warn', 'error'].includes(levelRaw) ? levelRaw : 'info';
+    const source = String(req.body?.source || 'client');
+    const timestamp = new Date(Number(req.body?.ts || Date.now())).toISOString();
+
+    let user = null;
+    const token = getAuthToken(req);
+    if (token) {
+      await ensureAuthDb();
+      const session = await fetchSessionUser(token);
+      if (session?.user) {
+        user = {
+          id: session.user.id,
+          emailHash: hashIdentifier(session.user.email || ''),
+          name: session.user.name || null
+        };
+      }
+    }
+
+    const entry = {
+      ts: timestamp,
+      level,
+      event,
+      source,
+      user,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      data: sanitizeForLog(req.body?.data || {})
+    };
+
+    void appendLog(entry);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'Logging failed.' });
+  }
+});
+
 app.post('/api/browse', async (req, res) => {
   const normalizedUrl = normalizeUrl(req.body?.url);
   if (!normalizedUrl) {
@@ -244,6 +373,14 @@ app.post('/api/auth/register', async (req, res) => {
     );
     const userId = result.lastID;
     const session = await createSession(userId);
+    void appendLog({
+      ts: new Date().toISOString(),
+      level: 'info',
+      event: 'auth_register',
+      source: 'server',
+      user: { id: userId, emailHash: hashIdentifier(email), name },
+      data: { emailDomain: email.split('@')[1] || null }
+    });
     return res.json({
       ok: true,
       token: session.token,
@@ -271,15 +408,38 @@ app.post('/api/auth/login', async (req, res) => {
       email
     );
     if (!user) {
+      void appendLog({
+        ts: new Date().toISOString(),
+        level: 'warn',
+        event: 'auth_login_failed',
+        source: 'server',
+        user: { emailHash: hashIdentifier(email) },
+        data: { reason: 'invalid_credentials' }
+      });
       return res.status(401).json({ ok: false, error: 'Invalid email or password.' });
     }
 
     const valid = await verifyPassword(password, user.password_hash);
     if (!valid) {
+      void appendLog({
+        ts: new Date().toISOString(),
+        level: 'warn',
+        event: 'auth_login_failed',
+        source: 'server',
+        user: { id: user.id, emailHash: hashIdentifier(email), name: user.name || null },
+        data: { reason: 'invalid_credentials' }
+      });
       return res.status(401).json({ ok: false, error: 'Invalid email or password.' });
     }
 
     const session = await createSession(user.id);
+    void appendLog({
+      ts: new Date().toISOString(),
+      level: 'info',
+      event: 'auth_login_success',
+      source: 'server',
+      user: { id: user.id, emailHash: hashIdentifier(email), name: user.name || null }
+    });
     return res.json({
       ok: true,
       token: session.token,
@@ -319,7 +479,19 @@ app.post('/api/auth/logout', async (req, res) => {
     if (!token) {
       return res.status(400).json({ ok: false, error: 'Missing token.' });
     }
+    const session = await fetchSessionUser(token);
     await authDb.run('DELETE FROM sessions WHERE token = ?', token);
+    void appendLog({
+      ts: new Date().toISOString(),
+      level: 'info',
+      event: 'auth_logout',
+      source: 'server',
+      user: session?.user ? {
+        id: session.user.id,
+        emailHash: hashIdentifier(session.user.email || ''),
+        name: session.user.name || null
+      } : null
+    });
     return res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Logout failed';

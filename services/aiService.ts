@@ -2,15 +2,52 @@ import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Type, create
 import { Message, AIProvider, AppSettings, GroundingMetadata } from "../types";
 import { buildApiUrl } from "./apiConfig";
 
+const PLACEHOLDER_API_KEYS = new Set([
+  'placeholder_api_key',
+  'your_api_key',
+  'your_api_key_here',
+  'insert_api_key_here',
+  'replace_me',
+  'replace-with-your-key',
+  'changeme',
+  'your_gemini_api_key'
+]);
+
+const normalizeApiKey = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const lower = trimmed.toLowerCase();
+  if (PLACEHOLDER_API_KEYS.has(lower)) return undefined;
+  return trimmed;
+};
+
 const getApiKey = (provider: AIProvider, settings: AppSettings): string | undefined => {
   switch (provider) {
-    case 'google': return settings.googleApiKey || process.env.API_KEY;
-    case 'openai': return settings.openaiApiKey;
-    case 'groq': return settings.groqApiKey;
-    case 'anthropic': return settings.anthropicApiKey;
-    case 'xai': return settings.xaiApiKey;
-    case 'local': return settings.localApiKey;
+    case 'google':
+      return (
+        normalizeApiKey(settings.googleApiKey) ||
+        normalizeApiKey(process.env.API_KEY) ||
+        normalizeApiKey(process.env.GEMINI_API_KEY)
+      );
+    case 'openai': return normalizeApiKey(settings.openaiApiKey);
+    case 'groq': return normalizeApiKey(settings.groqApiKey);
+    case 'anthropic': return normalizeApiKey(settings.anthropicApiKey);
+    case 'xai': return normalizeApiKey(settings.xaiApiKey);
+    case 'local': return normalizeApiKey(settings.localApiKey);
     default: return undefined;
+  }
+};
+
+const getProviderLabel = (provider: AIProvider): string => {
+  switch (provider) {
+    case 'google': return 'Google Gemini';
+    case 'openai': return 'OpenAI';
+    case 'groq': return 'Groq';
+    case 'anthropic': return 'Anthropic';
+    case 'xai': return 'xAI (Grok)';
+    case 'local': return 'Local (Ollama)';
+    default: return provider;
   }
 };
 
@@ -293,7 +330,8 @@ export const imageToText = async (
 ): Promise<string> => {
   const apiKey = getApiKey(provider, settings);
   if (!apiKey) {
-    throw new Error(`Missing API Key for ${provider}. Please configure it in settings.`);
+    const label = getProviderLabel(provider);
+    throw new Error(`Missing API key for ${label}. Configure it in Settings > API Settings.`);
   }
   if (provider !== 'google') {
     throw new Error('Image-to-text is currently supported only for Google Gemini.');
@@ -325,7 +363,8 @@ export const textToImage = async (
 ): Promise<{ dataUrl: string; mimeType: string }> => {
   const apiKey = getApiKey(provider, settings);
   if (!apiKey) {
-    throw new Error(`Missing API Key for ${provider}. Please configure it in settings.`);
+    const label = getProviderLabel(provider);
+    throw new Error(`Missing API key for ${label}. Configure it in Settings > API Settings.`);
   }
   if (provider !== 'google') {
     throw new Error('Text-to-image is currently supported only for Google Gemini.');
@@ -359,7 +398,8 @@ export const streamAIResponse = async (
 ): Promise<AIResponse> => {
   const apiKey = getApiKey(provider, settings);
   if (!apiKey && provider !== 'local') {
-    throw new Error(`Missing API Key for ${provider}. Please configure it in settings.`);
+    const label = getProviderLabel(provider);
+    throw new Error(`Missing API key for ${label}. Configure it in Settings > API Settings.`);
   }
 
   if (provider === 'google') {
