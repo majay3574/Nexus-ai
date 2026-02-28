@@ -14,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = Number(process.env.PORT || process.env.BROWSER_PORT || 3001);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const OLLAMA_DEFAULT_BASE = 'http://localhost:11434';
 const RAW_AUTH_TOKEN_TTL_DAYS = Number(process.env.AUTH_TOKEN_TTL_DAYS || 30);
 const AUTH_TOKEN_TTL_DAYS = Number.isFinite(RAW_AUTH_TOKEN_TTL_DAYS) && RAW_AUTH_TOKEN_TTL_DAYS > 0
@@ -71,6 +72,7 @@ const normalizeUrl = (input) => {
 };
 
 const normalizeOllamaBase = (input) => {
+  if (IS_PRODUCTION) return null;
   const raw = (input ? String(input).trim() : '') || process.env.OLLAMA_BASE_URL || OLLAMA_DEFAULT_BASE;
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
   try {
@@ -502,7 +504,10 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/ollama/models', async (req, res) => {
   const base = normalizeOllamaBase(req.query?.baseUrl);
   if (!base) {
-    return res.status(400).json({ ok: false, error: 'Invalid Ollama base URL' });
+    const message = IS_PRODUCTION
+      ? 'Ollama proxy is disabled in production.'
+      : 'Invalid Ollama base URL';
+    return res.status(400).json({ ok: false, error: message });
   }
   try {
     const resOpenAI = await fetch(`${base}/v1/models`);
@@ -532,7 +537,10 @@ app.get('/api/ollama/models', async (req, res) => {
 app.post('/api/ollama/pull', async (req, res) => {
   const base = normalizeOllamaBase(req.query?.baseUrl);
   if (!base) {
-    return res.status(400).json({ ok: false, error: 'Invalid Ollama base URL' });
+    const message = IS_PRODUCTION
+      ? 'Ollama proxy is disabled in production.'
+      : 'Invalid Ollama base URL';
+    return res.status(400).json({ ok: false, error: message });
   }
   const name = req.body?.name;
   if (!name) {

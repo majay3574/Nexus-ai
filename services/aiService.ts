@@ -60,6 +60,20 @@ const DEFAULT_IMAGE_MODEL = 'imagen-4.0-generate-001';
 const DEFAULT_IMAGE_PROMPT = 'Extract all readable text from this image. If there is no text, describe the image clearly.';
 const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
 const DEFAULT_LOCAL_BASE_URL = `${DEFAULT_OLLAMA_BASE_URL}/v1`;
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+const isLocalHostname = (hostname: string): boolean => LOCAL_HOSTNAMES.has(hostname);
+
+const isLocalApp = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const hostname = window.location?.hostname || '';
+  if (isLocalHostname(hostname)) return true;
+  const protocol = window.location?.protocol || '';
+  return protocol === 'file:';
+};
+
+const getDefaultOllamaBase = (): string | null =>
+  (isLocalApp() ? DEFAULT_OLLAMA_BASE_URL : null);
 
 const normalizeUrl = (value: string): string => {
   const trimmed = value.trim();
@@ -68,18 +82,50 @@ const normalizeUrl = (value: string): string => {
   return `https://${trimmed}`;
 };
 
-const normalizeOllamaBase = (value: string | undefined): string => {
+const normalizeOllamaBase = (value: string | undefined): string | null => {
   const raw = (value || '').trim();
-  const base = raw || DEFAULT_OLLAMA_BASE_URL;
+  const base = raw || getDefaultOllamaBase();
+  if (!base) return null;
   const withProtocol = /^https?:\/\//i.test(base) ? base : `http://${base}`;
   const trimmed = withProtocol.replace(/\/+$/, '');
-  return trimmed.replace(/\/v1$/i, '');
+  const cleaned = trimmed.replace(/\/v1$/i, '');
+  if (!isLocalApp() && isLocalOllamaBase(cleaned)) return null;
+  return cleaned;
 };
 
-const normalizeBaseUrl = (value: string | undefined): string => {
+const normalizeBaseUrl = (value: string | undefined): string | null => {
   const base = normalizeOllamaBase(value);
+  if (!base) return null;
   return base.endsWith('/v1') ? base : `${base}/v1`;
 };
+
+const isLocalOllamaBase = (base: string): boolean => {
+  try {
+    const parsed = new URL(base);
+    return isLocalHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
+const shouldUseOllamaProxy = (base: string): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (!isLocalApp()) return false;
+  return isLocalOllamaBase(base);
+};
+
+const requireOllamaBase = (value: string | undefined): string => {
+  const base = normalizeOllamaBase(value);
+  if (!base) {
+    throw new Error(
+      'Local Ollama is only available when running the app locally. Configure a non-local base URL to use Ollama in production.'
+    );
+  }
+  return base;
+};
+
+const buildOllamaProxyUrl = (path: string, base: string): string =>
+  `${buildApiUrl(path)}?baseUrl=${encodeURIComponent(base)}`;
 
 const createAbortError = () => {
   const err = new Error('Aborted');
@@ -124,8 +170,9 @@ const parseOllamaModelsFromTags = (data: any): string[] => {
 };
 
 export const fetchLocalModels = async (baseUrl?: string): Promise<string[]> => {
-  const base = normalizeOllamaBase(baseUrl);
+  const base = requireOllamaBase(baseUrl);
   const baseV1 = `${base}/v1`;
+  const canProxy = shouldUseOllamaProxy(base);
 
   const tryOpenAI = async () => {
     const res = await fetch(`${baseV1}/models`);
@@ -145,21 +192,29 @@ export const fetchLocalModels = async (baseUrl?: string): Promise<string[]> => {
     return models;
   };
 
+  const tryProxy = async () => {
+    const proxyUrl = buildOllamaProxyUrl('/api/ollama/models', base);
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error(`Proxy status ${res.status}`);
+    const data = await res.json();
+    const models = Array.isArray(data?.models) ? data.models : [];
+    if (models.length === 0) throw new Error('No models returned');
+    return models;
+  };
+
   try {
     return await tryOpenAI();
   } catch (err) {
     try {
       return await tryTags();
     } catch (err2) {
+      if (!canProxy) {
+        const message = err2 instanceof Error ? err2.message : 'Failed to fetch Ollama models';
+        throw new Error(`Ollama models not available. ${message}`);
+      }
       // Fallback to local proxy if direct fetch is blocked by CORS
       try {
-        const proxyUrl = `${buildApiUrl('/api/ollama/models')}?baseUrl=${encodeURIComponent(base)}`;
-        const res = await fetch(proxyUrl);
-        if (!res.ok) throw new Error(`Proxy status ${res.status}`);
-        const data = await res.json();
-        const models = Array.isArray(data?.models) ? data.models : [];
-        if (models.length === 0) throw new Error('No models returned');
-        return models;
+        return await tryProxy();
       } catch (proxyErr: any) {
         const message = proxyErr?.message || 'Failed to fetch Ollama models';
         throw new Error(`Ollama models not available. ${message}`);
@@ -186,7 +241,8 @@ export const pullLocalModel = async (baseUrl: string | undefined, name: string):
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error('Model name is required.');
 
-  const base = normalizeOllamaBase(baseUrl);
+  const base = requireOllamaBase(baseUrl);
+  const canProxy = shouldUseOllamaProxy(base);
   const body = JSON.stringify({ name: trimmedName });
 
   const tryDirect = async () => {
@@ -202,23 +258,40 @@ export const pullLocalModel = async (baseUrl: string | undefined, name: string):
     return { status: parseOllamaPullStatus(text) || 'Download started' };
   };
 
+  const tryProxy = async () => {
+    const proxyUrl = buildOllamaProxyUrl('/api/ollama/pull', base);
+    const res = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Proxy status ${res.status}`);
+    }
+    const data = await res.json();
+    if (data?.status) return { status: data.status };
+    return { status: 'Download started' };
+  };
+
+  if (useProxy) {
+    try {
+      return await tryProxy();
+    } catch (proxyErr: any) {
+      const message = proxyErr?.message || 'Failed to download model';
+      throw new Error(`Ollama download failed. ${message}`);
+    }
+  }
+
   try {
     return await tryDirect();
   } catch (err) {
+    if (!canProxy) {
+      const message = err instanceof Error ? err.message : 'Failed to download model';
+      throw new Error(`Ollama download failed. ${message}`);
+    }
     try {
-      const proxyUrl = `${buildApiUrl('/api/ollama/pull')}?baseUrl=${encodeURIComponent(base)}`;
-      const res = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Proxy status ${res.status}`);
-      }
-      const data = await res.json();
-      if (data?.status) return { status: data.status };
-      return { status: 'Download started' };
+      return await tryProxy();
     } catch (proxyErr: any) {
       const message = proxyErr?.message || 'Failed to download model';
       throw new Error(`Ollama download failed. ${message}`);
@@ -408,9 +481,25 @@ export const streamAIResponse = async (
     let baseUrl = 'https://api.openai.com/v1';
     if (provider === 'groq') baseUrl = 'https://api.groq.com/openai/v1';
     if (provider === 'xai') baseUrl = 'https://api.x.ai/v1';
-    if (provider === 'local') baseUrl = normalizeBaseUrl(settings.localBaseUrl);
+    let endpointOverride: string | undefined = undefined;
 
-    const content = await streamOpenAICompatible(baseUrl, apiKey, model, systemInstruction, history, newMessage, onChunk, signal);
+    if (provider === 'local') {
+      const base = requireOllamaBase(settings.localBaseUrl);
+      const baseV1 = base.endsWith('/v1') ? base : `${base}/v1`;
+      baseUrl = baseV1;
+    }
+
+    const content = await streamOpenAICompatible(
+      baseUrl,
+      apiKey,
+      model,
+      systemInstruction,
+      history,
+      newMessage,
+      onChunk,
+      signal,
+      endpointOverride
+    );
     return { content };
   } else if (provider === 'anthropic') {
      const content = await streamAnthropicResponse(apiKey, model, systemInstruction, history, newMessage, onChunk, signal);
@@ -572,7 +661,8 @@ async function streamOpenAICompatible(
   history: Message[],
   newMessage: string,
   onChunk: (text: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  endpointOverride?: string
 ): Promise<string> {
   const messages = [
     { role: 'system', content: systemInstruction },
@@ -587,7 +677,8 @@ async function streamOpenAICompatible(
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const targetUrl = endpointOverride || `${baseUrl}/chat/completions`;
+  const response = await fetch(targetUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify({
