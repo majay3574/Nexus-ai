@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Key, Globe, Lock, Server, RefreshCw } from 'lucide-react';
 import { AppSettings } from '../types';
-import { fetchLocalModels, pullLocalModel } from '../services/aiService';
+import { canUseLocalOllama, fetchLocalModels, pullLocalModel } from '../services/aiService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -27,6 +27,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   const refreshLocalModels = async (baseUrl?: string) => {
     setLocalLoading(true);
     setLocalStatus('Checking Ollama models...');
+    if (!canUseLocalOllama(baseUrl)) {
+      setLocalModels([]);
+      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.');
+      setLocalLoading(false);
+      return;
+    }
     try {
       const models = await fetchLocalModels(baseUrl);
       setLocalModels(models);
@@ -47,6 +53,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
     if (!localPullName.trim()) return;
     setLocalPulling(true);
     setLocalStatus('Downloading model...');
+    if (!canUseLocalOllama(keys.localBaseUrl)) {
+      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.');
+      setLocalPulling(false);
+      return;
+    }
     try {
       const result = await pullLocalModel(keys.localBaseUrl, localPullName);
       setLocalStatus(result.status || 'Download started.');

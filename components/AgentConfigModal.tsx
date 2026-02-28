@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AgentConfig, ModelType, AIProvider, AppSettings } from '../types';
 import { X, Save, RefreshCw, Globe, Search, MonitorPlay, Trash2 } from 'lucide-react';
-import { fetchGroqModels, fetchLocalModels, pullLocalModel } from '../services/aiService';
+import { canUseLocalOllama, fetchGroqModels, fetchLocalModels, pullLocalModel } from '../services/aiService';
 
 interface AgentConfigModalProps {
   isOpen: boolean;
@@ -105,6 +105,12 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
   const refreshLocalModels = async () => {
     setLocalLoading(true);
     setLocalStatus('Checking Ollama models...');
+    if (!canUseLocalOllama(settings.localBaseUrl)) {
+      setLocalModels([]);
+      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.');
+      setLocalLoading(false);
+      return;
+    }
     try {
       const models = await fetchLocalModels(settings.localBaseUrl);
       setLocalModels(models);
@@ -125,6 +131,11 @@ const AgentConfigModal: React.FC<AgentConfigModalProps> = ({ isOpen, onClose, on
     if (!localPullName.trim()) return;
     setLocalPulling(true);
     setLocalStatus('Downloading model...');
+    if (!canUseLocalOllama(settings.localBaseUrl)) {
+      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.');
+      setLocalPulling(false);
+      return;
+    }
     try {
       const result = await pullLocalModel(settings.localBaseUrl, localPullName);
       setLocalStatus(result.status || 'Download started.');

@@ -64,7 +64,7 @@ const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
 
 const isLocalHostname = (hostname: string): boolean => LOCAL_HOSTNAMES.has(hostname);
 
-const isLocalApp = (): boolean => {
+export const isLocalApp = (): boolean => {
   if (typeof window === 'undefined') return false;
   const hostname = window.location?.hostname || '';
   if (isLocalHostname(hostname)) return true;
@@ -72,8 +72,7 @@ const isLocalApp = (): boolean => {
   return protocol === 'file:';
 };
 
-const getDefaultOllamaBase = (): string | null =>
-  (isLocalApp() ? DEFAULT_OLLAMA_BASE_URL : null);
+const getDefaultOllamaBase = (): string => DEFAULT_OLLAMA_BASE_URL;
 
 const normalizeUrl = (value: string): string => {
   const trimmed = value.trim();
@@ -82,6 +81,15 @@ const normalizeUrl = (value: string): string => {
   return `https://${trimmed}`;
 };
 
+function isLocalOllamaBase(base: string): boolean {
+  try {
+    const parsed = new URL(base);
+    return isLocalHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 const normalizeOllamaBase = (value: string | undefined): string | null => {
   const raw = (value || '').trim();
   const base = raw || getDefaultOllamaBase();
@@ -89,23 +97,17 @@ const normalizeOllamaBase = (value: string | undefined): string | null => {
   const withProtocol = /^https?:\/\//i.test(base) ? base : `http://${base}`;
   const trimmed = withProtocol.replace(/\/+$/, '');
   const cleaned = trimmed.replace(/\/v1$/i, '');
-  if (!isLocalApp() && isLocalOllamaBase(cleaned)) return null;
+  if (!isLocalOllamaBase(cleaned)) return null;
   return cleaned;
 };
+
+export const canUseLocalOllama = (value?: string): boolean =>
+  !!normalizeOllamaBase(value);
 
 const normalizeBaseUrl = (value: string | undefined): string | null => {
   const base = normalizeOllamaBase(value);
   if (!base) return null;
   return base.endsWith('/v1') ? base : `${base}/v1`;
-};
-
-const isLocalOllamaBase = (base: string): boolean => {
-  try {
-    const parsed = new URL(base);
-    return isLocalHostname(parsed.hostname);
-  } catch {
-    return false;
-  }
 };
 
 const shouldUseOllamaProxy = (base: string): boolean => {
@@ -118,7 +120,7 @@ const requireOllamaBase = (value: string | undefined): string => {
   const base = normalizeOllamaBase(value);
   if (!base) {
     throw new Error(
-      'Local Ollama is only available when running the app locally. Configure a non-local base URL to use Ollama in production.'
+      'Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.'
     );
   }
   return base;
