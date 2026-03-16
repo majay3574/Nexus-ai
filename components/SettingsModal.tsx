@@ -3,6 +3,23 @@ import { X, Save, Key, Globe, Lock, Server, RefreshCw } from 'lucide-react';
 import { AppSettings } from '../types';
 import { canUseLocalOllama, fetchLocalModels, pullLocalModel } from '../services/aiService';
 
+const resolveOllamaOrigin = (): string => {
+  if (typeof window === 'undefined') return 'https://nexus-ai-il1c.onrender.com';
+  const origin = window.location?.origin || '';
+  if (!origin || origin === 'null') return 'http://localhost:5173';
+  return origin;
+};
+
+const buildLocalSaferBat = (origin: string): string => [
+  '@echo off',
+  'setlocal',
+  `set "OLLAMA_ORIGINS=${origin}"`,
+  'taskkill /IM ollama.exe /F >nul 2>&1',
+  'ollama serve',
+  'pause',
+  'endlocal'
+].join('\r\n');
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -17,6 +34,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   const [localLoading, setLocalLoading] = useState(false);
   const [localPullName, setLocalPullName] = useState('');
   const [localPulling, setLocalPulling] = useState(false);
+  const [showLocalHelper, setShowLocalHelper] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -27,9 +45,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   const refreshLocalModels = async (baseUrl?: string) => {
     setLocalLoading(true);
     setLocalStatus('Checking Ollama models...');
+    setShowLocalHelper(false);
     if (!canUseLocalOllama(baseUrl)) {
       setLocalModels([]);
       setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine. If you are using the hosted app, enable CORS in Ollama or run the local bridge (npm run server).');
+      setShowLocalHelper(true);
       setLocalLoading(false);
       return;
     }
@@ -43,18 +63,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
       }
     } catch (e: any) {
       setLocalModels([]);
-      setLocalStatus(e?.message || 'Failed to load Ollama models.');
+      const message = e?.message || 'Failed to load Ollama models.';
+      setLocalStatus(message);
+      if (/cors/i.test(message)) setShowLocalHelper(true);
     } finally {
       setLocalLoading(false);
     }
+  };
+
+  const handleDownloadLocalHelper = () => {
+    if (typeof window === 'undefined') return;
+    const origin = resolveOllamaOrigin();
+    const content = buildLocalSaferBat(origin);
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'localSafer.bat';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handlePullLocalModel = async () => {
     if (!localPullName.trim()) return;
     setLocalPulling(true);
     setLocalStatus('Downloading model...');
+    setShowLocalHelper(false);
     if (!canUseLocalOllama(keys.localBaseUrl)) {
       setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine. If you are using the hosted app, enable CORS in Ollama or run the local bridge (npm run server).');
+      setShowLocalHelper(true);
       setLocalPulling(false);
       return;
     }
@@ -63,7 +100,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
       setLocalStatus(result.status || 'Download started.');
       await refreshLocalModels(keys.localBaseUrl);
     } catch (e: any) {
-      setLocalStatus(e?.message || 'Failed to download model.');
+      const message = e?.message || 'Failed to download model.';
+      setLocalStatus(message);
+      if (/cors/i.test(message)) setShowLocalHelper(true);
     } finally {
       setLocalPulling(false);
     }
@@ -246,6 +285,27 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                     {m}
                   </span>
                 ))}
+              </div>
+            )}
+            {showLocalHelper && (
+              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-900/20 p-3 text-[11px] text-amber-100">
+                <div className="font-semibold text-amber-200">CORS blocked local Ollama.</div>
+                <div className="mt-1 text-amber-200/80">
+                  Use the local helper to start Ollama with safe CORS settings. Your data stays on your system.
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadLocalHelper}
+                  className="mt-2 inline-flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-100 hover:bg-amber-500/20 transition-colors"
+                >
+                  Download localSafer.bat
+                </button>
+                <div className="mt-2 text-amber-200/70">
+                  <div>Steps:</div>
+                  <div>1. Download the helper.</div>
+                  <div>2. Double-click `localSafer.bat`.</div>
+                  <div>3. Keep the window open while using Ollama in Nexus.</div>
+                </div>
               </div>
             )}
           </div>
