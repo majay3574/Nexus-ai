@@ -24,6 +24,7 @@ const AUTH_TOKEN_TTL_MS = AUTH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
 const SQLITE_PATH = process.env.SQLITE_PATH || path.join(process.cwd(), 'data', 'nexus-auth.sqlite');
 const LOG_PATH = process.env.APP_LOG_PATH || path.join(process.cwd(), 'data', 'app.log');
 const LOG_MAX_STRING = Number(process.env.APP_LOG_MAX_STRING || 8000);
+const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || path.join(process.cwd(), 'downloads');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -565,6 +566,10 @@ app.post('/api/ollama/pull', async (req, res) => {
 
 if (SHOULD_SERVE_CLIENT && fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
+}
+
+if (fs.existsSync(DOWNLOADS_DIR)) {
+  app.use('/downloads', express.static(DOWNLOADS_DIR));
 }
 
 if (SHOULD_SERVE_CLIENT && fs.existsSync(DIST_DIR)) {

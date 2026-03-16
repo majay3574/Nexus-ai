@@ -15,6 +15,55 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const desktopDownloadUrl = ((import.meta as any)?.env?.VITE_DESKTOP_DOWNLOAD_URL || '').trim();
+  const desktopDownloadLabel = ((import.meta as any)?.env?.VITE_DESKTOP_DOWNLOAD_LABEL || 'Download Desktop App').trim();
+  const desktopDownloadNote = ((import.meta as any)?.env?.VITE_DESKTOP_DOWNLOAD_NOTE || 'Run it locally for private, on-device Ollama.').trim();
+  const desktopDownloadUrlWin = ((import.meta as any)?.env?.VITE_DESKTOP_DOWNLOAD_URL_WINDOWS || '').trim();
+  const desktopDownloadUrlMac = ((import.meta as any)?.env?.VITE_DESKTOP_DOWNLOAD_URL_MAC || '').trim();
+  const desktopDownloadUrlLinux = ((import.meta as any)?.env?.VITE_DESKTOP_DOWNLOAD_URL_LINUX || '').trim();
+  const isElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || '');
+
+  const detectPlatform = (): 'windows' | 'mac' | 'linux' | 'unknown' => {
+    if (typeof navigator === 'undefined') return 'unknown';
+    const ua = `${navigator.userAgent || ''} ${navigator.platform || ''}`.toLowerCase();
+    if (ua.includes('win')) return 'windows';
+    if (ua.includes('mac')) return 'mac';
+    if (ua.includes('linux') || ua.includes('x11')) return 'linux';
+    return 'unknown';
+  };
+
+  const platform = detectPlatform();
+  const platformLabels: Record<string, string> = {
+    windows: 'Windows',
+    mac: 'macOS',
+    linux: 'Linux',
+    unknown: 'Desktop'
+  };
+
+  const platformUrls: Record<string, string> = {
+    windows: desktopDownloadUrlWin,
+    mac: desktopDownloadUrlMac,
+    linux: desktopDownloadUrlLinux
+  };
+
+  const buildDownloadOptions = () => {
+    if (desktopDownloadUrl) {
+      return [{ label: desktopDownloadLabel, url: desktopDownloadUrl }];
+    }
+    const platformUrl = platformUrls[platform];
+    if (platformUrl) {
+      return [{ label: `Download for ${platformLabels[platform]}`, url: platformUrl }];
+    }
+    const options = [
+      { label: 'Download for Windows', url: desktopDownloadUrlWin },
+      { label: 'Download for macOS', url: desktopDownloadUrlMac },
+      { label: 'Download for Linux', url: desktopDownloadUrlLinux }
+    ].filter((opt) => opt.url);
+    return options;
+  };
+
+  const downloadOptions = buildDownloadOptions();
+  const showDownload = downloadOptions.length > 0 && !isElectron;
 
   const isRegister = mode === 'register';
 
@@ -166,6 +215,29 @@ const LoginPage: React.FC<LoginPageProps> = ({ onAuthSuccess }) => {
             </button>
           </div>
         </div>
+        {showDownload ? (
+          <div className="mt-4 glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/20">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Desktop App</p>
+                <p className="text-xs text-slate-400 mt-1">{desktopDownloadNote}</p>
+                <p className="text-[11px] text-emerald-200 mt-2">After download, open the installer to launch the desktop app.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {downloadOptions.map((option) => (
+                  <a
+                    key={option.url}
+                    href={option.url}
+                    className="neo-button px-4 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap"
+                    download
+                  >
+                    {option.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="mt-6 w-full text-center text-xs text-slate-400 md:mt-0 md:w-auto md:text-right md:absolute md:right-6 md:bottom-4">
         Founder:{' '}

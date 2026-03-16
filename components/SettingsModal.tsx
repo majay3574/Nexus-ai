@@ -29,7 +29,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
     setLocalStatus('Checking Ollama models...');
     if (!canUseLocalOllama(baseUrl)) {
       setLocalModels([]);
-      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.');
+      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine. If you are using the hosted app, enable CORS in Ollama or run the local bridge (npm run server).');
       setLocalLoading(false);
       return;
     }
@@ -54,7 +54,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
     setLocalPulling(true);
     setLocalStatus('Downloading model...');
     if (!canUseLocalOllama(keys.localBaseUrl)) {
-      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.');
+      setLocalStatus('Local Ollama only supports localhost. Start Ollama on your machine. If you are using the hosted app, enable CORS in Ollama or run the local bridge (npm run server).');
       setLocalPulling(false);
       return;
     }
@@ -276,7 +276,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
               </button>
             </div>
             <p className="text-[10px] text-slate-500">
-              Requires Ollama running locally. If this fails due to CORS, run the backend server with <code>npm run dev:all</code>.
+              Requires Ollama running locally. If this fails due to CORS, enable CORS in Ollama or run the local bridge with <code>npm run server</code>.
             </p>
           </div>
 

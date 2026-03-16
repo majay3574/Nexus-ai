@@ -90,6 +90,17 @@ npm run build:desktop
 
 ## Configuration
 
+### Desktop App Download Link (Web UI)
+- `VITE_DESKTOP_DOWNLOAD_URL` - public URL to the desktop installer (e.g., `/downloads/Nexus-Agent-Studio-Setup.exe`)
+- `VITE_DESKTOP_DOWNLOAD_LABEL` - optional button label (default: `Download Desktop App`)
+- `VITE_DESKTOP_DOWNLOAD_NOTE` - optional helper text under the button
+- Optional platform-specific URLs (used when `VITE_DESKTOP_DOWNLOAD_URL` is not set):
+  - `VITE_DESKTOP_DOWNLOAD_URL_WINDOWS`
+  - `VITE_DESKTOP_DOWNLOAD_URL_MAC`
+  - `VITE_DESKTOP_DOWNLOAD_URL_LINUX`
+- Server can host installers if a `downloads/` folder exists:
+  - `DOWNLOADS_DIR` - absolute/relative path for the downloads folder (default: `./downloads`)
+
 ### API Keys (in Settings Modal)
 1. Google Gemini API Key
 2. OpenAI API Key

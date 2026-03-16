@@ -60,6 +60,7 @@ const DEFAULT_IMAGE_MODEL = 'imagen-4.0-generate-001';
 const DEFAULT_IMAGE_PROMPT = 'Extract all readable text from this image. If there is no text, describe the image clearly.';
 const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
 const DEFAULT_LOCAL_BASE_URL = `${DEFAULT_OLLAMA_BASE_URL}/v1`;
+const DEFAULT_OLLAMA_PROXY_BASE_URL = 'http://localhost:3001';
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
 
 const isLocalHostname = (hostname: string): boolean => LOCAL_HOSTNAMES.has(hostname);
@@ -84,11 +85,27 @@ const normalizeUrl = (value: string): string => {
 function isLocalOllamaBase(base: string): boolean {
   try {
     const parsed = new URL(base);
-    return isLocalHostname(parsed.hostname);
-  } catch {
-    return false;
-  }
+  return isLocalHostname(parsed.hostname);
+} catch {
+  return false;
 }
+}
+
+const buildOllamaCorsHint = (): string => {
+  if (typeof window === 'undefined') return '';
+  if (isLocalApp()) return '';
+  const origin = window.location?.origin || '';
+  const label = origin && origin !== 'null' ? origin : 'this site';
+  return ` If you are using the hosted app (${label}), Ollama must allow this origin (CORS) or run the local bridge: npm run server (http://localhost:3001).`;
+};
+
+const withOllamaCorsHint = (message: string): string => {
+  const hint = buildOllamaCorsHint();
+  if (!hint) return message;
+  const trimmed = message.trim();
+  const suffix = trimmed.endsWith('.') ? '' : '.';
+  return `${trimmed}${suffix}${hint}`;
+};
 
 const normalizeOllamaBase = (value: string | undefined): string | null => {
   const raw = (value || '').trim();
@@ -110,24 +127,32 @@ const normalizeBaseUrl = (value: string | undefined): string | null => {
   return base.endsWith('/v1') ? base : `${base}/v1`;
 };
 
-const shouldUseOllamaProxy = (base: string): boolean => {
-  if (typeof window === 'undefined') return false;
-  if (!isLocalApp()) return false;
-  return isLocalOllamaBase(base);
+const getOllamaProxyBase = (base: string): string | null => {
+  if (typeof window === 'undefined') return null;
+  if (!isLocalOllamaBase(base)) return null;
+  if (isLocalApp()) return buildApiUrl('');
+  return DEFAULT_OLLAMA_PROXY_BASE_URL;
 };
+
+const shouldUseOllamaProxy = (base: string): boolean => !!getOllamaProxyBase(base);
 
 const requireOllamaBase = (value: string | undefined): string => {
   const base = normalizeOllamaBase(value);
   if (!base) {
     throw new Error(
-      'Local Ollama only supports localhost. Start Ollama on your machine and allow CORS for this app.'
+      withOllamaCorsHint('Local Ollama only supports localhost. Start Ollama on your machine.')
     );
   }
   return base;
 };
 
-const buildOllamaProxyUrl = (path: string, base: string): string =>
-  `${buildApiUrl(path)}?baseUrl=${encodeURIComponent(base)}`;
+const buildOllamaProxyUrl = (path: string, base: string): string => {
+  const proxyBase = getOllamaProxyBase(base);
+  if (!proxyBase) return '';
+  const cleanBase = proxyBase.replace(/\/+$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${cleanBase}${cleanPath}?baseUrl=${encodeURIComponent(base)}`;
+};
 
 const createAbortError = () => {
   const err = new Error('Aborted');
@@ -196,6 +221,7 @@ export const fetchLocalModels = async (baseUrl?: string): Promise<string[]> => {
 
   const tryProxy = async () => {
     const proxyUrl = buildOllamaProxyUrl('/api/ollama/models', base);
+    if (!proxyUrl) throw new Error('Ollama proxy not available');
     const res = await fetch(proxyUrl);
     if (!res.ok) throw new Error(`Proxy status ${res.status}`);
     const data = await res.json();
@@ -212,14 +238,14 @@ export const fetchLocalModels = async (baseUrl?: string): Promise<string[]> => {
     } catch (err2) {
       if (!canProxy) {
         const message = err2 instanceof Error ? err2.message : 'Failed to fetch Ollama models';
-        throw new Error(`Ollama models not available. ${message}`);
+        throw new Error(withOllamaCorsHint(`Ollama models not available. ${message}`));
       }
       // Fallback to local proxy if direct fetch is blocked by CORS
       try {
         return await tryProxy();
       } catch (proxyErr: any) {
         const message = proxyErr?.message || 'Failed to fetch Ollama models';
-        throw new Error(`Ollama models not available. ${message}`);
+        throw new Error(withOllamaCorsHint(`Ollama models not available. ${message}`));
       }
     }
   }
@@ -262,6 +288,7 @@ export const pullLocalModel = async (baseUrl: string | undefined, name: string):
 
   const tryProxy = async () => {
     const proxyUrl = buildOllamaProxyUrl('/api/ollama/pull', base);
+    if (!proxyUrl) throw new Error('Ollama proxy not available');
     const res = await fetch(proxyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -276,27 +303,18 @@ export const pullLocalModel = async (baseUrl: string | undefined, name: string):
     return { status: 'Download started' };
   };
 
-  if (useProxy) {
-    try {
-      return await tryProxy();
-    } catch (proxyErr: any) {
-      const message = proxyErr?.message || 'Failed to download model';
-      throw new Error(`Ollama download failed. ${message}`);
-    }
-  }
-
   try {
     return await tryDirect();
   } catch (err) {
     if (!canProxy) {
       const message = err instanceof Error ? err.message : 'Failed to download model';
-      throw new Error(`Ollama download failed. ${message}`);
+      throw new Error(withOllamaCorsHint(`Ollama download failed. ${message}`));
     }
     try {
       return await tryProxy();
     } catch (proxyErr: any) {
       const message = proxyErr?.message || 'Failed to download model';
-      throw new Error(`Ollama download failed. ${message}`);
+      throw new Error(withOllamaCorsHint(`Ollama download failed. ${message}`));
     }
   }
 };
