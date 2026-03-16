@@ -1356,6 +1356,8 @@ function App() {
         onLoadAutomation={handleLoadAutomation}
         onRunAutomation={handleRunAutomation}
         availableTools={availableTools}
+        settings={settings}
+        agent={currentAgent}
       />
 
       <AnalyticsDashboard
