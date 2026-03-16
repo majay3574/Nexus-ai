@@ -2,23 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Key, Globe, Lock, Server, RefreshCw } from 'lucide-react';
 import { AppSettings } from '../types';
 import { canUseLocalOllama, fetchLocalModels, pullLocalModel } from '../services/aiService';
-
-const resolveOllamaOrigin = (): string => {
-  if (typeof window === 'undefined') return 'https://nexus-ai-il1c.onrender.com';
-  const origin = window.location?.origin || '';
-  if (!origin || origin === 'null') return 'http://localhost:5173';
-  return origin;
-};
-
-const buildLocalSaferBat = (origin: string): string => [
-  '@echo off',
-  'setlocal',
-  `set "OLLAMA_ORIGINS=${origin}"`,
-  'taskkill /IM ollama.exe /F >nul 2>&1',
-  'ollama serve',
-  'pause',
-  'endlocal'
-].join('\r\n');
+import { downloadLocalSaferBat } from '../services/ollamaHelper';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -72,16 +56,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   };
 
   const handleDownloadLocalHelper = () => {
-    if (typeof window === 'undefined') return;
-    const origin = resolveOllamaOrigin();
-    const content = buildLocalSaferBat(origin);
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'localSafer.bat';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadLocalSaferBat();
   };
 
   const handlePullLocalModel = async () => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { Send, Square, Menu, Sparkles, Search, Globe, Trash2, Download, ImageUp, ImageDown, Mic, MicOff, BookOpen, Edit2, RotateCcw, Pin, BarChart3, LogOut } from 'lucide-react';
+import { Send, Square, Menu, Sparkles, Search, Globe, Trash2, Download, ImageUp, ImageDown, Mic, MicOff, BookOpen, Edit2, RotateCcw, Pin, BarChart3, LogOut, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import AgentConfigModal from './components/AgentConfigModal';
@@ -12,6 +12,7 @@ import LoginPage from './components/LoginPage';
 import { AgentConfig, Message, ChatState, AppSettings, AutomationDefinition } from './types';
 import { DEFAULT_AGENTS } from './constants';
 import { streamAIResponse, imageToText, textToImage } from './services/aiService';
+import { downloadLocalSaferBat, isLocalHostname, resolveOllamaOrigin } from './services/ollamaHelper';
 import { logEvent } from './services/logService';
 import { fetchMe, logoutUser, AuthUser } from './services/authService';
 import * as db from './lib/db';
@@ -40,6 +41,8 @@ function App() {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [showOllamaHelper, setShowOllamaHelper] = useState(false);
+  const [ollamaErrorMessage, setOllamaErrorMessage] = useState('');
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -233,6 +236,27 @@ function App() {
       .replace(/[#>*_~`]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  };
+
+  const isHostedApp = () => {
+    if (typeof window === 'undefined') return false;
+    const hostname = window.location?.hostname || '';
+    const protocol = window.location?.protocol || '';
+    if (!hostname) return false;
+    if (protocol === 'file:') return false;
+    return !isLocalHostname(hostname);
+  };
+
+  const shouldShowOllamaHelper = (error: any): boolean => {
+    if (!currentAgent || currentAgent.provider !== 'local') return false;
+    const message = String(error?.message || error || '');
+    if (!message) return false;
+    if (/cors/i.test(message)) return true;
+    if (/failed to fetch/i.test(message)) return true;
+    if (/networkerror/i.test(message)) return true;
+    if (/ollama/i.test(message) && /localhost/i.test(message)) return true;
+    if (isHostedApp() && /fetch/i.test(message)) return true;
+    return false;
   };
 
   const handleSpeakMessage = (message: Message) => {
@@ -791,6 +815,11 @@ function App() {
       }
 
       console.error("AI Error", error);
+      if (shouldShowOllamaHelper(error)) {
+        const msg = String(error?.message || error || '').trim();
+        setOllamaErrorMessage(msg || 'Failed to reach local Ollama.');
+        setShowOllamaHelper(true);
+      }
 
       if (typingStartTimeout) {
         clearTimeout(typingStartTimeout);
@@ -1335,6 +1364,64 @@ function App() {
         agents={agents}
         messages={messages}
       />
+
+      {showOllamaHelper && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="neo-panel rounded-2xl w-full max-w-lg shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800/70">
+              <div>
+                <h2 className="text-lg font-bold text-white">Local Ollama Blocked (CORS)</h2>
+                <p className="text-xs text-slate-400">Start Ollama with safe local access settings.</p>
+              </div>
+              <button
+                onClick={() => setShowOllamaHelper(false)}
+                className="p-2 hover:bg-slate-800/60 rounded-full text-slate-400 hover:text-white transition-colors"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 sm:p-5 space-y-4 text-sm text-slate-300">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-900/20 p-3 text-[11px] text-amber-100">
+                {ollamaErrorMessage ? (
+                  <div className="font-medium">Error: {ollamaErrorMessage}</div>
+                ) : (
+                  <div className="font-medium">Unable to reach local Ollama from this browser.</div>
+                )}
+              </div>
+              <div>
+                Download the helper and run it before using Ollama in Nexus. Your data stays on your system.
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadLocalSaferBat()}
+                  className="inline-flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/20 transition-colors"
+                >
+                  Download localSafer.bat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOllamaHelper(false);
+                    setIsSettingsOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md border border-slate-600/60 bg-slate-800/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700/60 transition-colors"
+                >
+                  Open Settings
+                </button>
+              </div>
+              <div className="text-xs text-slate-400 space-y-1">
+                <div>Steps:</div>
+                <div>1. Download the helper.</div>
+                <div>2. Double-click `localSafer.bat`.</div>
+                <div>3. Keep the window open while using Ollama in Nexus.</div>
+                <div>Origin: {resolveOllamaOrigin()}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
